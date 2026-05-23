@@ -13,15 +13,15 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $error = 'Please fill in all fields.';
     } else {
         try {
-            $stmt = $conn->prepare("SELECT * FROM users WHERE email = ?");
+            $stmt = $conn->prepare("SELECT * FROM pp WHERE email = ?");
             $stmt->execute([$email]);
             $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
             if ($user && password_verify($password, $user['password'])) {
                 $_SESSION['user_id'] = $user['id'];
                 $_SESSION['email'] = $user['email'];
-                $success = 'Login successful! Redirecting...';
-                header("refresh:2;url=dashboard.php");
+                header("Location: cars.php");
+                exit;
             } else {
                 $error = 'Invalid email or password.';
             }
@@ -164,14 +164,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 </head>
 <body>
     <div class="page">
-        <header class="header">
-            <div class="logo">MySystem</div>
-            <a href="register.php">Create account</a>
-        </header>
+        <?php include 'header.php'; ?>
         <main class="card">
             <h1>Welcome back</h1>
             <p>Access your dashboard by signing in with your email and password.</p>
-            <form method="POST" action="dashboard.php">
+            <form method="POST">
                 <div class="form-group">
                     <label for="email">Email address</label>
                     <input id="email" type="email" name="email" placeholder="you@example.com">
@@ -190,6 +187,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 <p class="footer-note">Not a member? <a href="register.php">Create an account</a>.</p>
             </form>
         </main>
+        <?php include 'footer.php'; ?>
     </div>
 </body>
 </html>

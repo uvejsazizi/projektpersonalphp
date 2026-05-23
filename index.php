@@ -153,17 +153,7 @@
 </head>
 <body>
     <div class="page">
-        <header class="navbar">
-            <div class="logo">MySystem</div>
-            <nav>
-                <ul class="nav-links">
-                    <li><a class="active" href="index.php">Home</a></li>
-                    <li><a href="register.php">Register</a></li>
-                    <li><a href="login.php">Login</a></li>
-                </ul>
-            </nav>
-            <a class="btn" href="register.php">Create account</a>
-        </header>
+        <?php include 'header.php'; ?>
 
         <main class="hero">
             <section class="hero-card">
@@ -198,6 +188,7 @@
                 </div>
             </section>
         </main>
+        <?php include 'footer.php'; ?>
     </div>
 </body>
 </html>

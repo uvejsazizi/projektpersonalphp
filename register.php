@@ -20,7 +20,8 @@ if(isset($_POST['submit'])) {
         $insertSql->bindParam(':email', $email);
         $insertSql->bindParam(':password', $password);
         $insertSql->execute();
-        $registerSuccess = 'User Registered Successfully!';
+        header("Location: login.php");
+        exit;
     }
 }
 
@@ -159,10 +160,7 @@ if(isset($_POST['submit'])) {
 </head>
 <body>
     <div class="page">
-        <header class="header">
-            <div class="logo">MySystem</div>
-            <a href="login.php">Already have an account?</a>
-        </header>
+        <?php include 'header.php'; ?>
         <article class="card">
             <h1>Create your account</h1>
             <p>Fill in the fields below to register. This form now uses a modern layout with clear spacing and better typography.</p>
@@ -197,6 +195,7 @@ if(isset($_POST['submit'])) {
             </form>
             <p class="footer-note">Already registered? <a href="login.php">Sign in here</a>.</p>
         </article>
+        <?php include 'footer.php'; ?>
     </div>
 </body>
 </html>

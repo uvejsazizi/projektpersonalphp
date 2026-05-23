@@ -1,49 +1,390 @@
 <?php
+session_start();
+include 'config.php';
 
-include_once("config.php");
+// Check if user is logged in
+if (!isset($_SESSION['user_id'])) {
+    header("Location: login.php");
+    exit;
+}
 
-$id= $_GET['id'];
+$error = '';
+$success = '';
+$car = null;
 
-$sql ="SELECT * FROM pp WHERE id= :id";
+// Get car ID from URL
+$car_id = $_GET['id'] ?? null;
 
-$getUsers =$conn-> prepare($sql);
+if (!$car_id) {
+    header("Location: cars.php");
+    exit;
+}
 
-$getUsers->bindParam(":id",$id);
+// Fetch car data
+try {
+    $stmt = $conn->prepare("SELECT * FROM cars WHERE id = :id AND user_id = :user_id");
+    $stmt->bindParam(':id', $car_id);
+    $stmt->bindParam(':user_id', $_SESSION['user_id']);
+    $stmt->execute();
+    $car = $stmt->fetch(PDO::FETCH_ASSOC);
 
-$getUsers->execute();
+    if (!$car) {
+        header("Location: cars.php");
+        exit;
+    }
+} catch(PDOException $e) {
+    $error = 'Database error: ' . $e->getMessage();
+}
 
-$data = $getUsers -> fetch();
+// Handle form submission
+if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+    $name = trim($_POST['name'] ?? '');
+    $description = trim($_POST['description'] ?? '');
+    $make = trim($_POST['make'] ?? '');
+    $model = trim($_POST['model'] ?? '');
+    $year = trim($_POST['year'] ?? '');
+    $color = trim($_POST['color'] ?? '');
+    $image = $car['image'];
 
+    if (empty($name)) {
+        $error = 'Car name is required!';
+    } else {
+        // Handle image upload
+        if (isset($_FILES['image']) && $_FILES['image']['error'] == 0) {
+            $target_dir = "uploads/";
+            if (!is_dir($target_dir)) {
+                mkdir($target_dir, 0777, true);
+            }
+            
+            $file_ext = pathinfo($_FILES['image']['name'], PATHINFO_EXTENSION);
+            $allowed_ext = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+            
+            if (in_array(strtolower($file_ext), $allowed_ext)) {
+                $file_name = uniqid() . '.' . $file_ext;
+                $target_file = $target_dir . $file_name;
+                
+                if (move_uploaded_file($_FILES['image']['tmp_name'], $target_file)) {
+                    // Delete old image if it exists locally
+                    if (!empty($car['image']) && strpos($car['image'], 'uploads/') === 0 && file_exists($car['image'])) {
+                        unlink($car['image']);
+                    }
+                    $image = $target_file;
+                } else {
+                    $error = 'Failed to upload image.';
+                }
+            } else {
+                $error = 'Invalid image format. Only JPG, PNG, GIF, and WebP are allowed.';
+            }
+        }
 
+        if (empty($error)) {
+            try {
+                $sql = "UPDATE cars SET name = :name, description = :description, make = :make, 
+                        model = :model, year = :year, color = :color, image = :image WHERE id = :id AND user_id = :user_id";
+                $stmt = $conn->prepare($sql);
+                $stmt->bindParam(':name', $name);
+                $stmt->bindParam(':description', $description);
+                $stmt->bindParam(':make', $make);
+                $stmt->bindParam(':model', $model);
+                $stmt->bindParam(':year', $year);
+                $stmt->bindParam(':color', $color);
+                $stmt->bindParam(':image', $image);
+                $stmt->bindParam(':id', $car_id);
+                $stmt->bindParam(':user_id', $_SESSION['user_id']);
+                $stmt->execute();
+                
+                $success = 'Car updated successfully!';
+                $car['name'] = $name;
+                $car['description'] = $description;
+                $car['make'] = $make;
+                $car['model'] = $model;
+                $car['year'] = $year;
+                $car['color'] = $color;
+                $car['image'] = $image;
+                
+                // Redirect after 2 seconds
+                header("refresh:2; url=cars.php");
+            } catch(PDOException $e) {
+                $error = 'Database error: ' . $e->getMessage();
+            }
+        }
+    }
+}
 ?>
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <title>Edit User</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edit Car | MySystem</title>
+    <style>
+        :root {
+            --bg: #f5f7ff;
+            --surface: #ffffff;
+            --primary: #3b82f6;
+            --primary-dark: #1d4ed8;
+            --text: #111827;
+            --muted: #6b7280;
+            --radius: 24px;
+            --shadow: 0 24px 64px rgba(15, 23, 42, 0.08);
+        }
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: 'Inter', Arial, sans-serif;
+            background: linear-gradient(180deg, #eef2ff 0%, #f8fafc 100%);
+            color: var(--text);
+        }
+        .page {
+            width: min(1000px, calc(100% - 32px));
+            margin: 0 auto;
+            padding: 32px 0 48px;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 32px;
+        }
+        .logo {
+            font-weight: 700;
+            font-size: 1.2rem;
+            color: var(--primary-dark);
+        }
+        .header a {
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: 600;
+        }
+        .card {
+            background: var(--surface);
+            border-radius: var(--radius);
+            padding: 40px;
+            box-shadow: var(--shadow);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        .card h1 {
+            margin-top: 0;
+            margin-bottom: 12px;
+            font-size: 2rem;
+        }
+        .card p {
+            margin: 0 0 28px;
+            color: var(--muted);
+            line-height: 1.75;
+        }
+        .alert {
+            padding: 14px 18px;
+            border-radius: 16px;
+            margin-bottom: 22px;
+            font-size: 0.98rem;
+        }
+        .alert.error {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        .alert.success {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+        .form-group {
+            display: grid;
+            gap: 10px;
+            margin-bottom: 18px;
+        }
+        .form-group label {
+            color: var(--muted);
+            font-size: 0.95rem;
+            font-weight: 600;
+        }
+        .form-group input,
+        .form-group textarea {
+            width: 100%;
+            padding: 14px 16px;
+            border: 1px solid #d1d5db;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-family: inherit;
+            outline: none;
+            transition: border-color .2s ease, box-shadow .2s ease;
+        }
+        .form-group input:focus,
+        .form-group textarea:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.12);
+        }
+        .form-group textarea {
+            resize: vertical;
+            min-height: 120px;
+        }
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+        .image-preview {
+            width: 100%;
+            height: 200px;
+            background: #f9fafb;
+            border: 2px dashed #d1d5db;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 12px;
+            color: var(--muted);
+            font-size: 3rem;
+            transition: border-color .2s ease, background .2s ease;
+            overflow: hidden;
+        }
+        .image-preview.has-image {
+            background: white;
+            border-color: var(--primary);
+        }
+        .image-preview img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+        .button {
+            width: 100%;
+            border: none;
+            border-radius: 12px;
+            background: var(--primary);
+            color: white;
+            padding: 16px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 700;
+            transition: background .2s ease, transform .2s ease;
+        }
+        .button:hover {
+            background: var(--primary-dark);
+            transform: translateY(-1px);
+        }
+        .button-group {
+            display: flex;
+            gap: 12px;
+            margin-top: 24px;
+        }
+        .button-group .button {
+            flex: 1;
+        }
+        .button.secondary {
+            background: #e5e7eb;
+            color: var(--text);
+        }
+        .button.secondary:hover {
+            background: #d1d5db;
+        }
+        .back-link {
+            display: inline-block;
+            margin-top: 24px;
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: 600;
+        }
+        .back-link:hover {
+            text-decoration: underline;
+        }
+    </style>
 </head>
 <body>
+    <div class="page">
+        <?php include 'header.php'; ?>
+        
+        <article class="card">
+            <h1>Edit Car</h1>
+            <p>Update the details of your car below.</p>
 
-<form action="update.php" method="POST">
-    <input type="hidden" name="id" value="<?= $data['id'] ?>">
-    
-    <label for="name">Name:</label>
-    <input type="text" name="name" value="<?= $data['name'] ?>" required><br><br>
-    
-    <label for="surname">Surname:</label>
-    <input type="text" name="surname" value="<?= $data['user'] ?>" required><br><br>
-    
-    <label for="username">Username:</label>
-    <input type="text" name="username" value="<?= $data['username'] ?>" required><br><br>
-    
-    <label for="email">Email:</label>
-    <input type="email" name="email" value="<?= $data['email'] ?>" required><br><br>
-    
-    <label for="password">Password:</label>
-    <input type="text" name="password" value="<?= $data['password'] ?>" required><br><br>
-    
-    <input type="submit" name="submit" value="Update">
-    <a href="dashboard.php">Cancel</a>
-</form>
+            <?php if (!empty($error)): ?>
+                <div class="alert error"><?= htmlspecialchars($error) ?></div>
+            <?php endif; ?>
 
+            <?php if (!empty($success)): ?>
+                <div class="alert success"><?= htmlspecialchars($success) ?></div>
+            <?php endif; ?>
+
+            <?php if ($car): ?>
+                <form method="POST" enctype="multipart/form-data">
+                    <div class="form-group">
+                        <label for="name">Car Name *</label>
+                        <input id="name" type="text" name="name" placeholder="e.g., My Red Ferrari" required value="<?= htmlspecialchars($car['name']) ?>">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="description">Description</label>
+                        <textarea id="description" name="description" placeholder="Describe your car..."><?= htmlspecialchars($car['description'] ?? '') ?></textarea>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="make">Make</label>
+                            <input id="make" type="text" name="make" placeholder="e.g., Ferrari" value="<?= htmlspecialchars($car['make'] ?? '') ?>">
+                        </div>
+                        <div class="form-group">
+                            <label for="model">Model</label>
+                            <input id="model" type="text" name="model" placeholder="e.g., F8 Tributo" value="<?= htmlspecialchars($car['model'] ?? '') ?>">
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="year">Year</label>
+                            <input id="year" type="number" name="year" min="1900" max="<?= date('Y') + 1 ?>" placeholder="e.g., 2023" value="<?= htmlspecialchars($car['year'] ?? '') ?>">
+                        </div>
+                        <div class="form-group">
+                            <label for="color">Color</label>
+                            <input id="color" type="text" name="color" placeholder="e.g., Red" value="<?= htmlspecialchars($car['color'] ?? '') ?>">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="image">Car Image</label>
+                        <div class="image-preview <?= !empty($car['image']) ? 'has-image' : '' ?>" id="preview">
+                            <?php if (!empty($car['image'])): ?>
+                                <img src="<?= htmlspecialchars($car['image']) ?>" alt="<?= htmlspecialchars($car['name']) ?>">
+                            <?php else: ?>
+                                🖼️
+                            <?php endif; ?>
+                        </div>
+                        <input id="image" type="file" name="image" accept="image/*" style="display: none;">
+                        <button type="button" class="button secondary" onclick="document.getElementById('image').click();">Change Image</button>
+                    </div>
+
+                    <div class="button-group">
+                        <button type="submit" class="button">Update Car</button>
+                        <a href="cars.php" class="button secondary" style="text-decoration: none; display: flex; align-items: center; justify-content: center;">Cancel</a>
+                    </div>
+                </form>
+
+                <a href="cars.php" class="back-link">← Back to Cars</a>
+            <?php endif; ?>
+        </article>
+
+        <?php include 'footer.php'; ?>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('image');
+        const preview = document.getElementById('preview');
+
+        fileInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    preview.innerHTML = '<img src="' + event.target.result + '" alt="Preview">';
+                    preview.classList.add('has-image');
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+    </script>
 </body>
 </html>

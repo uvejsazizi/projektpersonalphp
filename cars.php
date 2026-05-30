@@ -9,10 +9,30 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 $cars = [];
+$carImages = [];
 try {
-    $stmt = $conn->prepare("SELECT * FROM cars ORDER BY id DESC");
+    $stmt = $conn->prepare("SELECT * FROM cars WHERE user_id = :user_id ORDER BY id DESC");
+    $stmt->bindParam(':user_id', $_SESSION['user_id']);
     $stmt->execute();
     $cars = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    if (!empty($cars)) {
+        $conn->exec("CREATE TABLE IF NOT EXISTS car_images (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            car_id INT NOT NULL,
+            image_path VARCHAR(500) NOT NULL,
+            FOREIGN KEY (car_id) REFERENCES cars(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+        $ids = array_column($cars, 'id');
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $imagesStmt = $conn->prepare("SELECT * FROM car_images WHERE car_id IN ($placeholders)");
+        $imagesStmt->execute($ids);
+        $imageRows = $imagesStmt->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($imageRows as $row) {
+            $carImages[$row['car_id']][] = $row;
+        }
+    }
 } catch(PDOException $e) {
     $error = 'Database error: ' . $e->getMessage();
 }
@@ -208,6 +228,24 @@ try {
         .car-actions .delete:hover {
             background: #fecaca;
         }
+        .gallery-row {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 10px;
+            margin: 18px 0 0;
+        }
+        .gallery-thumb {
+            border-radius: 14px;
+            overflow: hidden;
+            min-height: 70px;
+            background: #f9fafb;
+            border: 1px solid #d1d5db;
+        }
+        .gallery-thumb img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
         .empty-state {
             text-align: center;
             padding: 80px 20px;
@@ -249,9 +287,12 @@ try {
             <div class="cars-container">
                 <?php foreach ($cars as $car): ?>
                     <div class="car-card">
+                        <?php
+                            $primaryImage = !empty($car['image']) ? $car['image'] : ($carImages[$car['id']][0]['image_path'] ?? '');
+                        ?>
                         <div class="car-image">
-                            <?php if (!empty($car['image'])): ?>
-                                <img src="<?= htmlspecialchars($car['image']) ?>" alt="<?= htmlspecialchars($car['name']) ?>">
+                            <?php if (!empty($primaryImage)): ?>
+                                <img src="<?= htmlspecialchars($primaryImage) ?>" alt="<?= htmlspecialchars($car['name']) ?>">
                             <?php else: ?>
                                 <span>🖼️</span>
                             <?php endif; ?>
@@ -285,7 +326,23 @@ try {
                                         <div class="car-detail-value"><?= htmlspecialchars($car['color']) ?></div>
                                     </div>
                                 <?php endif; ?>
+                                <?php if (isset($car['price']) && $car['price'] !== ''): ?>
+                                    <div class="car-detail">
+                                        <div class="car-detail-label">Price</div>
+                                        <div class="car-detail-value"><?= htmlspecialchars($car['price']) ?></div>
+                                    </div>
+                                <?php endif; ?>
                             </div>
+
+                            <?php if (!empty($carImages[$car['id']])): ?>
+                                <div class="gallery-row">
+                                    <?php foreach (array_slice($carImages[$car['id']], 0, 3) as $galleryPhoto): ?>
+                                        <div class="gallery-thumb">
+                                            <img src="<?= htmlspecialchars($galleryPhoto['image_path']) ?>" alt="<?= htmlspecialchars($car['name']) ?>">
+                                        </div>
+                                    <?php endforeach; ?>
+                                </div>
+                            <?php endif; ?>
 
                             <div class="car-actions">
                                 <a href="edit.php?id=<?= $car['id'] ?>" class="edit">Edit</a>

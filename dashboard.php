@@ -10,6 +10,19 @@ $selectUsers->execute();
 
 $user = $selectUsers->fetchAll();
 
+// If current session is admin, load inquiries
+$inquiries = [];
+if (isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'admin') {
+    try {
+        $iq = $conn->prepare("SELECT i.id, i.car_id, i.user_id, i.message, i.offer_price, i.created_at, c.name as car_name, u.email as user_email, u.name as user_name FROM inquiries i LEFT JOIN cars c ON i.car_id = c.id LEFT JOIN pp u ON i.user_id = u.id ORDER BY i.created_at DESC");
+        $iq->execute();
+        $inquiries = $iq->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        // ignore if table doesn't exist yet
+        $inquiries = [];
+    }
+}
+
 
 ?>
 
@@ -294,6 +307,38 @@ $user = $selectUsers->fetchAll();
                 <span>Updated live from the database.</span>
             </div>
         </div>
+
+        <?php if (!empty($inquiries)): ?>
+            <h2 style="margin-top:28px;">Incoming Inquiries</h2>
+            <div class="table-panel">
+                <table class="dashboard-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Car</th>
+                            <th>User</th>
+                            <th>Email</th>
+                            <th>Message</th>
+                            <th>Offer Price</th>
+                            <th>When</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($inquiries as $iq): ?>
+                        <tr>
+                            <td><?= htmlspecialchars($iq['id']) ?></td>
+                            <td><?= htmlspecialchars($iq['car_name'] ?? '—') ?> (ID <?= htmlspecialchars($iq['car_id']) ?>)</td>
+                            <td><?= htmlspecialchars($iq['user_name'] ?? '—') ?></td>
+                            <td><?= htmlspecialchars($iq['user_email'] ?? '—') ?></td>
+                            <td><?= htmlspecialchars($iq['message'] ?? '') ?></td>
+                            <td><?= htmlspecialchars($iq['offer_price'] ?? '') ?></td>
+                            <td><?= htmlspecialchars($iq['created_at']) ?></td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        <?php endif; ?>
 
         <?php include 'footer.php'; ?>
     </div>

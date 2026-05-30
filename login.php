@@ -20,6 +20,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             if ($user && password_verify($password, $user['password'])) {
                 $_SESSION['user_id'] = $user['id'];
                 $_SESSION['email'] = $user['email'];
+                // store role/user-type in session for admin checks
+                $_SESSION['user_role'] = $user['user'] ?? '';
                 header("Location: cars.php");
                 exit;
             } else {

@@ -19,17 +19,19 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $year = trim($_POST['year'] ?? '');
     $color = trim($_POST['color'] ?? '');
     $image = '';
+    $price = trim($_POST['price'] ?? '');
 
     if (empty($name)) {
         $error = 'Car name is required!';
     } else {
-        // Handle image upload
+        $galleryFiles = [];
+        $target_dir = "uploads/";
+        if (!is_dir($target_dir)) {
+            mkdir($target_dir, 0777, true);
+        }
+
+        // Handle main image upload
         if (isset($_FILES['image']) && $_FILES['image']['error'] == 0) {
-            $target_dir = "uploads/";
-            if (!is_dir($target_dir)) {
-                mkdir($target_dir, 0777, true);
-            }
-            
             $file_ext = pathinfo($_FILES['image']['name'], PATHINFO_EXTENSION);
             $allowed_ext = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
             
@@ -47,10 +49,32 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             }
         }
 
+        // Handle gallery uploads
+        if (isset($_FILES['gallery_images']) && !empty($_FILES['gallery_images']['name'][0]) && empty($error)) {
+            $allowed_ext = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+            foreach ($_FILES['gallery_images']['name'] as $index => $galleryName) {
+                $galleryError = $_FILES['gallery_images']['error'][$index];
+                if ($galleryError !== UPLOAD_ERR_OK) {
+                    continue;
+                }
+                $galleryExt = pathinfo($galleryName, PATHINFO_EXTENSION);
+                if (!in_array(strtolower($galleryExt), $allowed_ext)) {
+                    $error = 'Invalid gallery image format. Only JPG, PNG, GIF, and WebP are allowed.';
+                    break;
+                }
+
+                $galleryFileName = uniqid('gallery_') . '.' . $galleryExt;
+                $galleryTarget = $target_dir . $galleryFileName;
+                if (move_uploaded_file($_FILES['gallery_images']['tmp_name'][$index], $galleryTarget)) {
+                    $galleryFiles[] = 'uploads/' . $galleryFileName;
+                }
+            }
+        }
+
         if (empty($error)) {
             try {
-                $sql = "INSERT INTO cars (user_id, name, description, make, model, year, color, image) 
-                        VALUES (:user_id, :name, :description, :make, :model, :year, :color, :image)";
+                $sql = "INSERT INTO cars (user_id, name, description, make, model, year, color, image, price) 
+                    VALUES (:user_id, :name, :description, :make, :model, :year, :color, :image, :price)";
                 $stmt = $conn->prepare($sql);
                 $stmt->bindParam(':user_id', $_SESSION['user_id']);
                 $stmt->bindParam(':name', $name);
@@ -60,8 +84,25 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 $stmt->bindParam(':year', $year);
                 $stmt->bindParam(':color', $color);
                 $stmt->bindParam(':image', $image);
+                $stmt->bindParam(':price', $price);
                 $stmt->execute();
-                
+
+                $car_id = $conn->lastInsertId();
+                if (!empty($galleryFiles)) {
+                    $conn->exec("CREATE TABLE IF NOT EXISTS car_images (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        car_id INT NOT NULL,
+                        image_path VARCHAR(500) NOT NULL,
+                        FOREIGN KEY (car_id) REFERENCES cars(id) ON DELETE CASCADE
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                    $galleryInsert = $conn->prepare('INSERT INTO car_images (car_id, image_path) VALUES (:car_id, :image_path)');
+                    foreach ($galleryFiles as $galleryImage) {
+                        $galleryInsert->bindParam(':car_id', $car_id);
+                        $galleryInsert->bindParam(':image_path', $galleryImage);
+                        $galleryInsert->execute();
+                    }
+                }
+
                 $success = 'Car added successfully!';
                 // Redirect after 2 seconds
                 header("refresh:2; url=cars.php");
@@ -304,6 +345,17 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                         <label for="color">Color</label>
                         <input id="color" type="text" name="color" placeholder="e.g., Red" value="<?= htmlspecialchars($_POST['color'] ?? '') ?>">
                     </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="price">Price</label>
+                    <input id="price" type="number" step="0.01" name="price" placeholder="e.g., 25000" value="<?= htmlspecialchars($_POST['price'] ?? '') ?>">
+                </div>
+
+                <div class="form-group">
+                    <label for="gallery_images">Interior & extra photos</label>
+                    <input id="gallery_images" type="file" name="gallery_images[]" accept="image/*" multiple>
+                    <small style="color: var(--muted);">Upload multiple images to show interior and extra angles.</small>
                 </div>
 
                 <div class="form-group image-upload">

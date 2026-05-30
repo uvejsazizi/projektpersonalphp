@@ -2,8 +2,6 @@
 $currentPage = basename($_SERVER['PHP_SELF']);
 $navItems = [
     'index.php' => 'Home',
-    'register.php' => 'Register',
-    'login.php' => 'Login',
 ];
 ?>
 <header class="site-navbar">
@@ -16,6 +14,14 @@ $navItems = [
         <?php foreach ($navItems as $href => $label): ?>
             <a href="<?= $href ?>" class="nav-link<?= $currentPage === $href ? ' active' : '' ?>"><?= $label ?></a>
         <?php endforeach; ?>
+
+        <?php if (session_status() === PHP_SESSION_ACTIVE && isset($_SESSION['user_id'])): ?>
+            <a href="account.php" class="nav-link<?= $currentPage === 'account.php' ? ' active' : '' ?>">Account</a>
+            <a href="logout.php" class="nav-link">Logout</a>
+        <?php else: ?>
+            <a href="register.php" class="nav-link<?= $currentPage === 'register.php' ? ' active' : '' ?>">Register</a>
+            <a href="login.php" class="nav-link<?= $currentPage === 'login.php' ? ' active' : '' ?>">Login</a>
+        <?php endif; ?>
     </nav>
 
     <a class="navbar-cta" href="register.php">Start free</a>

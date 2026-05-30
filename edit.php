@@ -32,43 +32,59 @@ try {
         header("Location: cars.php");
         exit;
     }
-} catch(PDOException $e) {
-    $error = 'Database error: ' . $e->getMessage();
-}
 
-// Handle form submission
-if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    $name = trim($_POST['name'] ?? '');
-    $description = trim($_POST['description'] ?? '');
-    $make = trim($_POST['make'] ?? '');
-    $model = trim($_POST['model'] ?? '');
-    $year = trim($_POST['year'] ?? '');
-    $color = trim($_POST['color'] ?? '');
-    $image = $car['image'];
+    try {
+        $conn->exec("CREATE TABLE IF NOT EXISTS car_images (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            car_id INT NOT NULL,
+            image_path VARCHAR(500) NOT NULL,
+            FOREIGN KEY (car_id) REFERENCES cars(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
-    if (empty($name)) {
-        $error = 'Car name is required!';
-    } else {
+        $imagesStmt = $conn->prepare('SELECT * FROM car_images WHERE car_id = :car_id');
+        $imagesStmt->bindParam(':car_id', $car_id);
+        $imagesStmt->execute();
+        $galleryImages = $imagesStmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        $galleryImages = [];
+    }
+
+    if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+        $name = trim($_POST['name'] ?? '');
+        $description = trim($_POST['description'] ?? '');
+        $make = trim($_POST['make'] ?? '');
+        $model = trim($_POST['model'] ?? '');
+        $year = trim($_POST['year'] ?? '');
+        $color = trim($_POST['color'] ?? '');
+        $price = trim($_POST['price'] ?? ($car['price'] ?? ''));
+        $image = $car['image'];
+        $upload_dir = __DIR__ . '/uploads/';
+
+        if (empty($name)) {
+            $error = 'Car name is required!';
+        } else {
         // Handle image upload
-        if (isset($_FILES['image']) && $_FILES['image']['error'] == 0) {
-            $target_dir = "uploads/";
-            if (!is_dir($target_dir)) {
-                mkdir($target_dir, 0777, true);
+        if (isset($_FILES['image']) && $_FILES['image']['error'] === UPLOAD_ERR_OK) {
+            if (!is_dir($upload_dir)) {
+                mkdir($upload_dir, 0777, true);
             }
             
             $file_ext = pathinfo($_FILES['image']['name'], PATHINFO_EXTENSION);
             $allowed_ext = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
             
             if (in_array(strtolower($file_ext), $allowed_ext)) {
-                $file_name = uniqid() . '.' . $file_ext;
-                $target_file = $target_dir . $file_name;
+                $file_name = uniqid('car_', true) . '.' . $file_ext;
+                $target_file = $upload_dir . $file_name;
+                $image_path = 'uploads/' . $file_name;
                 
                 if (move_uploaded_file($_FILES['image']['tmp_name'], $target_file)) {
-                    // Delete old image if it exists locally
-                    if (!empty($car['image']) && strpos($car['image'], 'uploads/') === 0 && file_exists($car['image'])) {
-                        unlink($car['image']);
+                    if (!empty($car['image'])) {
+                        $old_image = __DIR__ . '/' . ltrim($car['image'], '/');
+                        if (file_exists($old_image)) {
+                            unlink($old_image);
+                        }
                     }
-                    $image = $target_file;
+                    $image = $image_path;
                 } else {
                     $error = 'Failed to upload image.';
                 }
@@ -77,10 +93,43 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             }
         }
 
+        $galleryFiles = [];
+        if (isset($_FILES['gallery_images']) && !empty($_FILES['gallery_images']['name'][0]) && empty($error)) {
+            try {
+                $allowed_ext = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+                $conn->exec("CREATE TABLE IF NOT EXISTS car_images (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    car_id INT NOT NULL,
+                    image_path VARCHAR(500) NOT NULL,
+                    FOREIGN KEY (car_id) REFERENCES cars(id) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+                foreach ($_FILES['gallery_images']['name'] as $index => $galleryName) {
+                    $galleryError = $_FILES['gallery_images']['error'][$index];
+                    if ($galleryError !== UPLOAD_ERR_OK) {
+                        continue;
+                    }
+                    $galleryExt = pathinfo($galleryName, PATHINFO_EXTENSION);
+                    if (!in_array(strtolower($galleryExt), $allowed_ext)) {
+                        $error = 'Invalid gallery image format. Only JPG, PNG, GIF, and WebP are allowed.';
+                        break;
+                    }
+
+                    $galleryFileName = uniqid('gallery_') . '.' . $galleryExt;
+                    $galleryTarget = $upload_dir . $galleryFileName;
+                    if (move_uploaded_file($_FILES['gallery_images']['tmp_name'][$index], $galleryTarget)) {
+                        $galleryFiles[] = 'uploads/' . $galleryFileName;
+                    }
+                }
+            } catch (PDOException $e) {
+                $error = 'Database error: ' . $e->getMessage();
+            }
+        }
+
         if (empty($error)) {
             try {
                 $sql = "UPDATE cars SET name = :name, description = :description, make = :make, 
-                        model = :model, year = :year, color = :color, image = :image WHERE id = :id AND user_id = :user_id";
+                    model = :model, year = :year, color = :color, image = :image, price = :price WHERE id = :id AND user_id = :user_id";
                 $stmt = $conn->prepare($sql);
                 $stmt->bindParam(':name', $name);
                 $stmt->bindParam(':description', $description);
@@ -89,10 +138,20 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 $stmt->bindParam(':year', $year);
                 $stmt->bindParam(':color', $color);
                 $stmt->bindParam(':image', $image);
+                $stmt->bindParam(':price', $price);
                 $stmt->bindParam(':id', $car_id);
                 $stmt->bindParam(':user_id', $_SESSION['user_id']);
                 $stmt->execute();
-                
+
+                if (!empty($galleryFiles)) {
+                    $galleryInsert = $conn->prepare('INSERT INTO car_images (car_id, image_path) VALUES (:car_id, :image_path)');
+                    foreach ($galleryFiles as $galleryImage) {
+                        $galleryInsert->bindParam(':car_id', $car_id);
+                        $galleryInsert->bindParam(':image_path', $galleryImage);
+                        $galleryInsert->execute();
+                    }
+                }
+
                 $success = 'Car updated successfully!';
                 $car['name'] = $name;
                 $car['description'] = $description;
@@ -102,13 +161,16 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 $car['color'] = $color;
                 $car['image'] = $image;
                 
-                // Redirect after 2 seconds
-                header("refresh:2; url=cars.php");
+                header('Location: cars.php');
+                exit;
             } catch(PDOException $e) {
                 $error = 'Database error: ' . $e->getMessage();
             }
         }
     }
+}
+} catch(PDOException $e) {
+    $error = 'Database error: ' . $e->getMessage();
 }
 ?>
 
@@ -251,6 +313,26 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             max-height: 100%;
             object-fit: contain;
         }
+        .gallery-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+            gap: 12px;
+            margin-bottom: 18px;
+        }
+
+        .gallery-thumb {
+            border-radius: 14px;
+            overflow: hidden;
+            height: 90px;
+            background: #f9fafb;
+            border: 1px solid #d1d5db;
+        }
+
+        .gallery-thumb img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
         .button {
             width: 100%;
             border: none;
@@ -342,6 +424,27 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                             <label for="color">Color</label>
                             <input id="color" type="text" name="color" placeholder="e.g., Red" value="<?= htmlspecialchars($car['color'] ?? '') ?>">
                         </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="price">Price</label>
+                        <input id="price" type="number" step="0.01" name="price" placeholder="e.g., 25000" value="<?= htmlspecialchars($car['price'] ?? '') ?>">
+                    </div>
+
+                    <?php if (!empty($galleryImages)): ?>
+                        <div class="gallery-row">
+                            <?php foreach ($galleryImages as $gallery): ?>
+                                <div class="gallery-thumb">
+                                    <img src="<?= htmlspecialchars($gallery['image_path']) ?>" alt="Additional photo">
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
+
+                    <div class="form-group">
+                        <label for="gallery_images">Interior & extra photos</label>
+                        <input id="gallery_images" type="file" name="gallery_images[]" accept="image/*" multiple>
+                        <small style="color: var(--muted);">Upload extra photos to show the interior and more angles.</small>
                     </div>
 
                     <div class="form-group">

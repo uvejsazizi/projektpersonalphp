@@ -16,7 +16,7 @@ if (!$car_id) {
     exit;
 }
 
-// Fetch car
+
 try {
     $stmt = $conn->prepare('SELECT id, name FROM cars WHERE id = :id');
     $stmt->bindParam(':id', $car_id);
@@ -38,7 +38,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Please provide a message or offer price.';
     } else {
         try {
-            // create inquiries table if not exists
+           
             $conn->exec("CREATE TABLE IF NOT EXISTS inquiries (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 car_id INT NOT NULL,

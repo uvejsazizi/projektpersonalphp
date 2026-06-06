@@ -2,7 +2,6 @@
 session_start();
 include 'config.php';
 
-// Check if user is logged in
 if (!isset($_SESSION['user_id'])) {
     header("Location: login.php");
     exit;
@@ -10,9 +9,74 @@ if (!isset($_SESSION['user_id'])) {
 
 $cars = [];
 $carImages = [];
+// Filters, search, sort, pagination
+$perPage = 9;
+$page = max(1, (int)($_GET['page'] ?? 1));
+$offset = ($page - 1) * $perPage;
+
+$filters = [];
+$params = [':user_id' => $_SESSION['user_id']];
+
+// search query
+if (!empty($_GET['q'])) {
+    $filters[] = "(name LIKE :q OR description LIKE :q)";
+    $params[':q'] = '%' . $_GET['q'] . '%';
+}
+if (!empty($_GET['make'])) {
+    $filters[] = "make = :make";
+    $params[':make'] = $_GET['make'];
+}
+if (!empty($_GET['model'])) {
+    $filters[] = "model = :model";
+    $params[':model'] = $_GET['model'];
+}
+if (!empty($_GET['year_min'])) {
+    $filters[] = "year >= :year_min";
+    $params[':year_min'] = (int)$_GET['year_min'];
+}
+if (!empty($_GET['year_max'])) {
+    $filters[] = "year <= :year_max";
+    $params[':year_max'] = (int)$_GET['year_max'];
+}
+if (!empty($_GET['price_min'])) {
+    $filters[] = "price >= :price_min";
+    $params[':price_min'] = (float)$_GET['price_min'];
+}
+if (!empty($_GET['price_max'])) {
+    $filters[] = "price <= :price_max";
+    $params[':price_max'] = (float)$_GET['price_max'];
+}
+
+$where = "WHERE user_id = :user_id";
+if (!empty($filters)) {
+    $where .= ' AND ' . implode(' AND ', $filters);
+}
+
+$sort = 'id DESC';
+if (!empty($_GET['sort'])) {
+    switch ($_GET['sort']) {
+        case 'price_asc': $sort = 'price ASC'; break;
+        case 'price_desc': $sort = 'price DESC'; break;
+        case 'year_asc': $sort = 'year ASC'; break;
+        case 'year_desc': $sort = 'year DESC'; break;
+        case 'name_asc': $sort = 'name ASC'; break;
+        case 'name_desc': $sort = 'name DESC'; break;
+    }
+}
+
 try {
-    $stmt = $conn->prepare("SELECT * FROM cars WHERE user_id = :user_id ORDER BY id DESC");
-    $stmt->bindParam(':user_id', $_SESSION['user_id']);
+    // total count for pagination
+    $countStmt = $conn->prepare("SELECT COUNT(*) as cnt FROM cars $where");
+    $countStmt->execute($params);
+    $total = (int)$countStmt->fetch(PDO::FETCH_ASSOC)['cnt'];
+
+    $stmt = $conn->prepare("SELECT * FROM cars $where ORDER BY $sort LIMIT :limit OFFSET :offset");
+    foreach ($params as $k => $v) {
+        // bind params except limit/offset
+        $stmt->bindValue($k, $v);
+    }
+    $stmt->bindValue(':limit', (int)$perPage, PDO::PARAM_INT);
+    $stmt->bindValue(':offset', (int)$offset, PDO::PARAM_INT);
     $stmt->execute();
     $cars = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -271,6 +335,26 @@ try {
             <a href="add.php" class="btn">+ Add New Car</a>
         </div>
 
+        <form method="get" style="display:flex;gap:12px;flex-wrap:wrap;margin-top:18px;align-items:center;">
+            <input type="search" name="q" placeholder="Search name or description" value="<?= htmlspecialchars($_GET['q'] ?? '') ?>" style="padding:10px;border-radius:12px;border:1px solid #e5e7eb;min-width:220px;">
+            <input type="text" name="make" placeholder="Make" value="<?= htmlspecialchars($_GET['make'] ?? '') ?>" style="padding:10px;border-radius:12px;border:1px solid #e5e7eb;">
+            <input type="text" name="model" placeholder="Model" value="<?= htmlspecialchars($_GET['model'] ?? '') ?>" style="padding:10px;border-radius:12px;border:1px solid #e5e7eb;">
+            <input type="number" name="year_min" placeholder="Year from" value="<?= htmlspecialchars($_GET['year_min'] ?? '') ?>" style="padding:10px;border-radius:12px;border:1px solid #e5e7eb;width:110px;">
+            <input type="number" name="year_max" placeholder="Year to" value="<?= htmlspecialchars($_GET['year_max'] ?? '') ?>" style="padding:10px;border-radius:12px;border:1px solid #e5e7eb;width:110px;">
+            <input type="number" step="0.01" name="price_min" placeholder="Price min" value="<?= htmlspecialchars($_GET['price_min'] ?? '') ?>" style="padding:10px;border-radius:12px;border:1px solid #e5e7eb;width:120px;">
+            <input type="number" step="0.01" name="price_max" placeholder="Price max" value="<?= htmlspecialchars($_GET['price_max'] ?? '') ?>" style="padding:10px;border-radius:12px;border:1px solid #e5e7eb;width:120px;">
+            <select name="sort" style="padding:10px;border-radius:12px;border:1px solid #e5e7eb;">
+                <option value="">Sort</option>
+                <option value="price_asc" <?= (($_GET['sort'] ?? '')==='price_asc')? 'selected':'' ?>>Price ↑</option>
+                <option value="price_desc" <?= (($_GET['sort'] ?? '')==='price_desc')? 'selected':'' ?>>Price ↓</option>
+                <option value="year_asc" <?= (($_GET['sort'] ?? '')==='year_asc')? 'selected':'' ?>>Year ↑</option>
+                <option value="year_desc" <?= (($_GET['sort'] ?? '')==='year_desc')? 'selected':'' ?>>Year ↓</option>
+                <option value="name_asc" <?= (($_GET['sort'] ?? '')==='name_asc')? 'selected':'' ?>>Name A→Z</option>
+                <option value="name_desc" <?= (($_GET['sort'] ?? '')==='name_desc')? 'selected':'' ?>>Name Z→A</option>
+            </select>
+            <button type="submit" class="btn btn-secondary" style="padding:8px 14px;">Filter</button>
+        </form>
+
         <?php if (isset($error)): ?>
             <div style="background: #fee2e2; color: #991b1b; padding: 14px 18px; border-radius: 12px; margin-bottom: 22px;">
                 <?= htmlspecialchars($error) ?>
@@ -352,6 +436,29 @@ try {
                     </div>
                 <?php endforeach; ?>
             </div>
+        <?php endif; ?>
+
+        <?php if (!empty($total) && $total > $perPage):
+            $totalPages = (int)ceil($total / $perPage);
+        ?>
+            <nav style="display:flex;gap:8px;justify-content:center;margin:28px 0;">
+                <?php
+                    $queryBase = $_GET;
+                    if ($page > 1) {
+                        $queryBase['page'] = $page - 1;
+                        echo '<a class="btn btn-secondary" href="?' . http_build_query($queryBase) . '">Prev</a>';
+                    }
+                    for ($p = 1; $p <= $totalPages; $p++) {
+                        $queryBase['page'] = $p;
+                        $cls = $p === $page ? 'btn' : 'btn btn-secondary';
+                        echo '<a class="' . $cls . '" href="?' . http_build_query($queryBase) . '" style="padding:8px 12px;">' . $p . '</a>';
+                    }
+                    if ($page < $totalPages) {
+                        $queryBase['page'] = $page + 1;
+                        echo '<a class="btn btn-secondary" href="?' . http_build_query($queryBase) . '">Next</a>';
+                    }
+                ?>
+            </nav>
         <?php endif; ?>
 
         <?php include 'footer.php'; ?>

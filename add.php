@@ -2,7 +2,7 @@
 session_start();
 include 'config.php';
 
-// Check if user is logged in
+
 if (!isset($_SESSION['user_id'])) {
     header("Location: login.php");
     exit;
@@ -30,7 +30,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             mkdir($target_dir, 0777, true);
         }
 
-        // Handle main image upload
         if (isset($_FILES['image']) && $_FILES['image']['error'] == 0) {
             $file_ext = pathinfo($_FILES['image']['name'], PATHINFO_EXTENSION);
             $allowed_ext = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
@@ -49,7 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             }
         }
 
-        // Handle gallery uploads
+       
         if (isset($_FILES['gallery_images']) && !empty($_FILES['gallery_images']['name'][0]) && empty($error)) {
             $allowed_ext = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
             foreach ($_FILES['gallery_images']['name'] as $index => $galleryName) {
@@ -104,7 +103,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 }
 
                 $success = 'Car added successfully!';
-                // Redirect after 2 seconds
+              
                 header("refresh:2; url=cars.php");
             } catch(PDOException $e) {
                 $error = 'Database error: ' . $e->getMessage();

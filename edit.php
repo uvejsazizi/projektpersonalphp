@@ -2,7 +2,7 @@
 session_start();
 include 'config.php';
 
-// Check if user is logged in
+
 if (!isset($_SESSION['user_id'])) {
     header("Location: login.php");
     exit;
@@ -12,7 +12,7 @@ $error = '';
 $success = '';
 $car = null;
 
-// Get car ID from URL
+
 $car_id = $_GET['id'] ?? null;
 
 if (!$car_id) {
@@ -20,7 +20,7 @@ if (!$car_id) {
     exit;
 }
 
-// Fetch car data
+
 try {
     $stmt = $conn->prepare("SELECT * FROM cars WHERE id = :id AND user_id = :user_id");
     $stmt->bindParam(':id', $car_id);

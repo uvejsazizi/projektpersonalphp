@@ -10,7 +10,6 @@ $selectUsers->execute();
 
 $user = $selectUsers->fetchAll();
 
-// If current session is admin, load inquiries
 $inquiries = [];
 if (isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'admin') {
     try {
@@ -18,9 +17,47 @@ if (isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'admin') {
         $iq->execute();
         $inquiries = $iq->fetchAll(PDO::FETCH_ASSOC);
     } catch (PDOException $e) {
-        // ignore if table doesn't exist yet
+       
         $inquiries = [];
     }
+}
+
+// Additional stats for charts
+$totalCars = 0;
+$totalInquiries = 0;
+$topCars = [];
+$signupsData = [];
+try {
+    $cstmt = $conn->prepare("SELECT COUNT(*) as cnt FROM cars");
+    $cstmt->execute();
+    $totalCars = (int)$cstmt->fetch(PDO::FETCH_ASSOC)['cnt'];
+
+    $istmt = $conn->prepare("SELECT COUNT(*) as cnt FROM inquiries");
+    $istmt->execute();
+    $totalInquiries = (int)$istmt->fetch(PDO::FETCH_ASSOC)['cnt'];
+
+    // top cars by number of inquiries
+    $tstmt = $conn->prepare("SELECT c.id, c.name, COUNT(i.id) as cnt FROM cars c LEFT JOIN inquiries i ON i.car_id = c.id GROUP BY c.id ORDER BY cnt DESC LIMIT 6");
+    $tstmt->execute();
+    $topCars = $tstmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // signups over last 14 days (if created_at exists)
+    try {
+        $sstmt = $conn->prepare("SELECT DATE(created_at) as d, COUNT(*) as cnt FROM pp WHERE created_at IS NOT NULL GROUP BY DATE(created_at) ORDER BY d DESC LIMIT 14");
+        $sstmt->execute();
+        $raw = $sstmt->fetchAll(PDO::FETCH_ASSOC);
+        // normalize to chronological order
+        $raw = array_reverse($raw);
+        foreach ($raw as $r) {
+            $signupsData['labels'][] = $r['d'];
+            $signupsData['data'][] = (int)$r['cnt'];
+        }
+    } catch (PDOException $e) {
+        // table may not have created_at; leave signupsData empty
+        $signupsData = [];
+    }
+} catch (PDOException $e) {
+    // ignore and show minimal stats
 }
 
 
@@ -271,6 +308,26 @@ if (isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'admin') {
             </div>
         </div>
 
+        <!-- Charts -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:22px;">
+            <div class="stat-card" style="padding:18px;">
+                <h3 style="margin-top:0;">Signups (recent)</h3>
+                <?php if (!empty($signupsData['labels'])): ?>
+                    <canvas id="signupsChart" width="400" height="180"></canvas>
+                <?php else: ?>
+                    <p style="color:var(--muted);">No signup timestamp data available.</p>
+                <?php endif; ?>
+            </div>
+            <div class="stat-card" style="padding:18px;">
+                <h3 style="margin-top:0;">Top cars by inquiries</h3>
+                <?php if (!empty($topCars)): ?>
+                    <canvas id="topCarsChart" width="400" height="180"></canvas>
+                <?php else: ?>
+                    <p style="color:var(--muted);">No data available yet.</p>
+                <?php endif; ?>
+            </div>
+        </div>
+
         <div class="table-panel">
             <table class="dashboard-table">
                 <thead>
@@ -339,6 +396,42 @@ if (isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'admin') {
                 </table>
             </div>
         <?php endif; ?>
+
+        <?php // Charts rendering scripts ?>
+        <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+        <script>
+            <?php if (!empty($signupsData['labels'])): ?>
+                const signupsLabels = <?= json_encode($signupsData['labels']) ?>;
+                const signupsValues = <?= json_encode($signupsData['data']) ?>;
+                const ctx1 = document.getElementById('signupsChart');
+                if (ctx1) {
+                    new Chart(ctx1, {
+                        type: 'bar',
+                        data: {
+                            labels: signupsLabels,
+                            datasets: [{ label: 'Signups', data: signupsValues, backgroundColor: 'rgba(37,99,235,0.6)' }]
+                        },
+                        options: { responsive: true, maintainAspectRatio: false }
+                    });
+                }
+            <?php endif; ?>
+
+            <?php if (!empty($topCars)): ?>
+                const topCarsLabels = <?= json_encode(array_column($topCars, 'name')) ?>;
+                const topCarsValues = <?= json_encode(array_map('intval', array_column($topCars, 'cnt'))) ?>;
+                const ctx2 = document.getElementById('topCarsChart');
+                if (ctx2) {
+                    new Chart(ctx2, {
+                        type: 'bar',
+                        data: {
+                            labels: topCarsLabels,
+                            datasets: [{ label: 'Inquiries', data: topCarsValues, backgroundColor: 'rgba(124,58,237,0.6)' }]
+                        },
+                        options: { responsive: true, maintainAspectRatio: false }
+                    });
+                }
+            <?php endif; ?>
+        </script>
 
         <?php include 'footer.php'; ?>
     </div>

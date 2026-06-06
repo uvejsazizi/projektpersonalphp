@@ -1,6 +1,5 @@
 <?php
-// Run this once from the browser or CLI to create a default admin account.
-// After creation, delete or protect this file.
+
 include 'config.php';
 
 $adminEmail = 'admin@example.com';
